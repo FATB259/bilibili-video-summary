@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bilibili 视频总结"
+  short_description: "提取 B 站字幕并生成按类型分析的中文文档"
+  default_prompt: "总结这个 B 站视频：{{VIDEO_URL}}"

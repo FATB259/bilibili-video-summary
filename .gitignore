@@ -1,0 +1,18 @@
+# Personal and generated media/output
+outputs/
+*.mp3
+*.wav
+*.m4a
+*.mp4
+*.flac
+*.srt
+*.vtt
+*.txt
+*.docx
+*.json
+__pycache__/
+.venv/
+venv/
+.env
+.cookies*
+cookies*.txt
