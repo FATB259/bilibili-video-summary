@@ -16,15 +16,14 @@ description: "处理 B 站视频、动态和稍后再看内容：提取原生字
 
 ## 主流程
 
-1. **识别入口**：直接链接/BV号、动态链接、稍后再看/收藏/历史。客户端内容优先使用 B 站客户端；浏览器插件只用于浏览器页面，不假设能注入客户端。客户端未运行时先启动；登录失效或调试接口不可用时说明阻塞点。
-2. **建立视频清单**：保存来源类型、来源链接、顺序、BV号、aid、cid、标题、UP主和时长；动态先解析挂载视频；批量任务去重但保留原始顺序。
-3. **获取字幕**：优先检查 B 站原生字幕接口。浏览器字幕下载器、字幕提取器和 SubBatch 属于同一类“读取已有字幕”的方法，不要对同一视频机械重复；SubBatch主要用于批量或接口兼容备用。每次都必须验证正文非空、语言合理、行数合理。
-4. **无字幕转写**：不使用 OCR、BibiGPT 或其他在线转写。下载/读取音轨后，使用本地 `faster-whisper` 的 `base` 模型，优先 GPU，GPU 不可用时 CPU。转写失败就停止该视频，写失败记录，不自动升级 `small`。
-5. **质量门控**：检查开头、中段、结尾、语言、覆盖时长、乱码/重复和关键术语。少量不确定词句继续处理，在 Word 中用红色下划线标记；整段无法可靠识别则失败。
-6. **自动分类**：根据标题、简介、UP主、字幕和结构判断主类型与次类型，写入文档并标注置信度。主要类型：AI/科技、简中键政/社会评论、知识讲解、工具教程/工作流、产品评测、访谈/播客、UP主/账号分析。
-7. **按类型分析**：不要套同一模板。按需读取 [references/content-types.md](references/content-types.md)；键政内容额外读取 [references/political-language.md](references/political-language.md)。
-8. **断言与核验**：提取重要断言，区分事实、因果解释、预测、价值判断和作者判断。键政/社会/新闻/历史核验原话、时间线、数据和关键事件；AI/科技/知识核验术语、标准、功能和明显事实断言；教程核验版本、权限、价格和前提；纯经验不逐句联网查。来源与边界写得简短即可。
-9. **输出与验收**：按 [references/output-schema.md](references/output-schema.md) 保存原始字幕、整理版、处理记录、失败记录和文档。成功后删除中间音频；失败时保留音频用于排查。批量任务一条失败不阻塞其他视频，最后列出失败项。
+1. **预检环境**：首次运行、切换 Python 或转写异常时，先执行 `scripts/check_environment.py --require-docx`；需要本地转写时再加 `--require-transcription --load-model`。缺少依赖时读取 [references/setup.md](references/setup.md)。
+2. **识别入口与清单**：直接链接/BV号、短链和动态交给 `scripts/extract_bilibili.py`。稍后再看使用 `scripts/read_watch_later.js` 从已登录客户端后台读取；收藏/历史使用同一客户端边界，但未提供稳定脚本时要明确说明。浏览器仅使用独立配置，不打断用户当前页面。批量任务用 `scripts/batch_index.py init` 去重并记录顺序。
+3. **获取原生字幕**：运行提取脚本，优先已登录 WBI 接口，未登录时允许公开播放器接口降级，但必须下载并验证字幕正文。浏览器字幕插件和 SubBatch 只作为已有字幕的兼容入口，不机械重复。
+4. **无字幕转写**：提取结果为 `needs_transcription` 时，用 `--download-audio` 获取签名音频，再运行 `scripts/transcribe_local.py`。默认 `base`、中文、GPU 优先；外语或混合语言改用 `--language auto`。失败退出码非零，不能继续汇报成功，也不自动升级 `small`。
+5. **质量门控**：检查开头、中段、结尾、语言、时间轴覆盖率、乱码/重复和关键术语。少量不确定词句继续处理并写入术语清单；整段无法可靠识别则生成失败记录。
+6. **分类与分析**：判断主类型与次类型并标注置信度。按需读取 [references/content-types.md](references/content-types.md)；键政内容额外读取 [references/political-language.md](references/political-language.md)。区分事实、引用、解释、预测、价值判断和 Codex 判断，只核验对结论重要且可核验的断言。
+7. **生成 Word**：保存 `analysis/analysis.md` 和整理字幕，使用 `scripts/build_notes_docx.py` 生成固定结构的 Word。不确定术语通过参数传入，统一显示为红色下划线。
+8. **验收并续跑**：能渲染时检查每一页并用 `scripts/record_visual_qa.py` 记录 `passed`；不能渲染时记录 `unverified` 和原因。最后运行 `scripts/validate_outputs.py`。成功后更新批量清单为 `completed`；失败项使用 `scripts/build_failure_docx.py` 生成明确的失败报告 Word，再更新为 `failed` 并继续其他视频。
 
 ## 不确定性与广告
 
@@ -35,8 +34,15 @@ description: "处理 B 站视频、动态和稍后再看内容：提取原生字
 
 ## 本地工具
 
+- 环境预检：`scripts/check_environment.py`
+- 原生字幕/音频提取：`scripts/extract_bilibili.py`
+- 客户端稍后再看：`scripts/read_watch_later.js`
+- 批量断点续跑：`scripts/batch_index.py`
 - 本地转写脚本：`scripts/transcribe_local.py`
+- Word 生成：`scripts/build_notes_docx.py`
+- 失败报告 Word：`scripts/build_failure_docx.py`
+- 视觉状态记录：`scripts/record_visual_qa.py`
 - 输出验收脚本：`scripts/validate_outputs.py`
 - 详细提取顺序和客户端/浏览器边界：`references/extraction.md`
 
-首次使用前检查当前 Python 是否能导入 `faster_whisper`，并确认 `base` 模型可加载。缺少依赖时再安装 `faster-whisper`；不要把模型缓存、音频、字幕或账号会话文件复制进 Skill 目录或提交到 Git。
+不要把模型缓存、音频、字幕、Cookie、账号会话或生成文档复制进 Skill 目录或提交到 Git。脚本生成的 JSON 只保存文件名或相对路径，不保存绝对本地路径和临时签名 URL。

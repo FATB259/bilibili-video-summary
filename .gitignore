@@ -8,6 +8,7 @@ outputs/
 *.srt
 *.vtt
 *.txt
+!bilibili-video-summary/requirements.txt
 *.docx
 *.json
 __pycache__/
